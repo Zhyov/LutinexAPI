@@ -75,7 +75,7 @@ def verify_token(authHeader):
 
 @app.route("/")
 def home():
-    return jsonify({"message": "Connected to Eshakap API"})
+    return jsonify({"message": "Connected to Lutinex API"})
 
 @app.route("/names")
 def get_names():
@@ -211,7 +211,6 @@ def get_companies():
         })
     return jsonify(result)
 
-
 @app.route("/company/<company_id>")
 def get_company(company_id):
     company = Company.query.get(company_id)
@@ -233,7 +232,6 @@ def get_company(company_id):
     }
     return jsonify(result)
 
-
 @app.route("/player/<player_id>/holdings")
 def get_player_holdings(player_id):
     ownerships = Ownership.query.filter_by(user_id=player_id).all()
@@ -252,7 +250,6 @@ def get_player_holdings(player_id):
         })
 
     return jsonify(result)
-
 
 @app.route("/company/<company_id>/history")
 def get_company_history(company_id):
