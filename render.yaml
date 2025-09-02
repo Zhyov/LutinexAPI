@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: eshakap
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn api:app

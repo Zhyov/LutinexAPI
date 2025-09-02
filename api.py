@@ -1,0 +1,323 @@
+from sqlalchemy import func, or_
+from flask import Flask, jsonify, request, abort
+from flask_cors import CORS
+from dotenv import load_dotenv
+from functools import lru_cache
+from datetime import datetime, timedelta
+from models import db, Word, Company, Ownership, SharePrice, User
+import uuid, os, requests, random
+
+load_dotenv()
+app = Flask(__name__, instance_relative_config=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+CORS(app)
+db.init_app(app)
+
+SUPABASE_PROJECT_ID = "sblovettyyzfrvbiroiz"
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+START_DATE = datetime(2025, 9, 1)
+
+filterPattern = {
+    "0": [],
+    "1": ["general"],
+    "2": ["special"],
+    "3": ["general", "special"],
+    "4": ["replaceable"],
+    "5": ["general", "replaceable"],
+    "6": ["special", "replaceable"],
+    "7": ["general", "special", "replaceable"],
+    "8": ["combination"],
+    "9": ["general", "combination"],
+    "a": ["special", "combination"],
+    "b": ["general", "special", "combination"],
+    "c": ["replaceable", "combination"],
+    "d": ["general", "replaceable", "combination"],
+    "e": ["special", "replaceable", "combination"],
+    "f": ["general", "special", "replaceable", "combination"]
+}
+
+def get_latest_two_prices(company_id):
+    prices = (
+        SharePrice.query
+            .filter_by(company_id=company_id)
+            .order_by(SharePrice.week.desc())
+            .limit(2)
+            .all()
+    )
+
+    if not prices:
+        return (0.0, 0.0)
+    if len(prices) == 1:
+        return (float(prices[0].price), 0.0)
+    return (float(prices[0].price), float(prices[1].price))
+
+
+@lru_cache(maxsize=128)
+def get_user_info(token):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "apikey": SUPABASE_JWT_SECRET
+    }
+    response = requests.get(
+        f"https://{SUPABASE_PROJECT_ID}.supabase.co/auth/v1/user",
+        headers=headers
+    )
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+def verify_token(authHeader):
+    if not authHeader or not authHeader.startswith("Bearer "):
+        return None
+    token = authHeader.split(" ")[1]
+    return get_user_info(token)
+
+@app.route("/")
+def home():
+    return jsonify({"message": "Connected to Eshakap API"})
+
+@app.route("/names")
+def get_names():
+    names = [name for (name,) in db.session.query(Word.word).all()]
+    return jsonify(names)
+
+@app.route("/fetch")
+def fetch_words():
+    query = request.args.get("q", "").lower()
+    filterKey = request.args.get("f", "")
+
+    wordsQuery = Word.query
+    if query:
+        wordsQuery = wordsQuery.filter(
+            or_(
+                func.lower(Word.word).like(f"%{query}%"),
+                func.cast(Word.meaning, db.Text).ilike(f"%{query}%")
+            )
+        )
+
+    if filterKey in filterPattern:
+        allowedTypes = [t.lower() for t in filterPattern[filterKey]]
+        wordsQuery = wordsQuery.filter(func.lower(Word.type).in_(allowedTypes))
+
+    words = wordsQuery.all()
+
+    result = [{
+            "id": str(word.id),
+            "word": word.word,
+            "meaning": word.meaning,
+            "type": word.type,
+            "phonetic": word.phonetic,
+            "combination": word.combination
+    } for word in words]
+
+    return jsonify(result)
+
+@app.route("/word")
+def get_word():
+    query = request.args.get("q", "").lower()
+    if not query:
+        return jsonify([])
+
+    words = Word.query.filter(func.lower(Word.word) == query).all()
+    result = [{
+        "id": str(word.id),
+        "word": word.word,
+        "meaning": word.meaning,
+        "type": word.type,
+        "phonetic": word.phonetic,
+        "combination": word.combination
+    } for word in words]
+    
+    return jsonify(result)
+
+@app.route("/max")
+def get_all_words_count():
+    maxCount = db.session.query(func.count(Word.id)).scalar()
+    return jsonify({"max": maxCount})
+
+@app.route("/convert")
+def convert_to_script():
+    query = request.args.get("q", "").lower()
+    characters = list(query)
+    charPath = "https://zhyov.github.io/Lutinex/assets/char/"
+    consonants = ["p", "b", "f", "v", "w", "k", "g", "t", "d", "đ", "z", "ž", "h", "j", "l", "m", "n", "ň", "r", "s", "š", "c", "č", "ç"]
+    vowels = ["a", "ä", "ą", "i", "į", "o", "ö"]
+    eshakap = []
+    final = []
+    i = 0
+
+    while i < len(characters):
+        char = characters[i]
+        prev = characters[i - 1] if i > 0 else None
+        next = characters[i + 1] if i + 1 < len(characters) else None
+
+        if char in vowels and (prev not in consonants):
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}aläp.svg" })
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}{char}.svg" })
+        elif char in consonants and (next is None or next in consonants):
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}{char}.svg" })
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}∅.svg" })
+        elif char in consonants and next in vowels:
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}{char}.svg" })
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}{next}.svg" })
+            i += 1
+        else:
+            final.append({ "id": str(uuid.uuid4()), "path": f"{charPath}{char}.svg" })
+
+        if len(final) == 2:
+            eshakap.append({ "id": str(uuid.uuid4()), "syllable": final })
+            final = []
+
+        i += 1
+    
+    if len(final) > 0:
+        eshakap.append({ "id": f"{str(uuid.uuid4())}", "syllable": final })
+
+    return jsonify(eshakap)
+
+@app.route("/order")
+def script_order():
+    order = ["a", "ä", "ą", "p", "b", "f", "v", "w", "k", "g", "t", "d", "đ", "z", "ž", "i", "į", "h", "j", "l", "m", "n", "ň", "o", "ö", "r", "s", "š", "c", "č", "ç"]
+
+    return jsonify(order)
+
+def get_latest_price(company_id):
+    latest = (
+        SharePrice.query.filter_by(company_id=company_id)
+        .order_by(SharePrice.week.desc())
+        .first()
+    )
+    return float(latest.price) if latest else 0.0
+
+@app.route("/companies")
+def get_companies():
+    companies = Company.query.all()
+    result = []
+    for company in companies:
+        latest_price, prev_price = get_latest_two_prices(company.id)
+        change = latest_price - prev_price
+        percent_change = (change / prev_price * 100) if prev_price > 0 else 0
+
+        result.append({
+            "id": str(company.id),
+            "name": company.name,
+            "code": company.code,
+            "latest_price": latest_price,
+            "previous_price": prev_price,
+            "change": change,
+            "percent_change": percent_change,
+            "total_shares": company.total_shares
+        })
+    return jsonify(result)
+
+
+@app.route("/company/<company_id>")
+def get_company(company_id):
+    company = Company.query.get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+
+    latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
+    latest_price = float(latest_price_obj.price) if latest_price_obj else 0
+
+    result = {
+        "id": str(company.id),
+        "name": company.name,
+        "code": company.code,
+        "latest_price": latest_price,
+        "total_shares": company.total_shares,
+        "float_shares": company.float_shares,
+        "insider_shares": company.insider_shares,
+        "gov_shares": company.gov_shares
+    }
+    return jsonify(result)
+
+
+@app.route("/player/<player_id>/holdings")
+def get_player_holdings(player_id):
+    ownerships = Ownership.query.filter_by(user_id=player_id).all()
+    result = []
+
+    for own in ownerships:
+        company = Company.query.get(own.company_id)
+        latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
+        latest_price = float(latest_price_obj.price) if latest_price_obj else 0
+
+        result.append({
+            "company": company.name,
+            "code": company.code,
+            "shares_owned": own.shares_owned,
+            "current_value": own.shares_owned * latest_price
+        })
+
+    return jsonify(result)
+
+
+@app.route("/company/<company_id>/history")
+def get_company_history(company_id):
+    history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.week).all()
+    result = [
+        {"week": h.week, "price": float(h.price)}
+        for h in history
+    ]
+    return jsonify(result)
+
+@app.route("/stocks")
+def get_stocks():
+    companies = Company.query.all()
+    result = []
+
+    for company in companies:
+        latest_price, prev_price = get_latest_two_prices(company.id)
+        change = latest_price - prev_price
+        percent_change = (change / prev_price * 100) if prev_price > 0 else 0
+
+        companyInfo = {
+            "id": str(company.id),
+            "name": company.name,
+            "code": company.code,
+            "price": latest_price,
+            "previous_price": prev_price,
+            "change": change,
+            "percent_change": percent_change,
+            "total_shares": company.total_shares
+        }
+
+        ownerships = Ownership.query.filter_by(company_id=company.id).all()
+        sharesData = [{"owner": "Government", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
+        IPOShares = 0
+        userShares = []
+        for own in ownerships:
+            userShares.append({
+                "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
+                "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
+                "shares": own.shares_owned
+            })
+            IPOShares += own.shares_owned
+        sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
+        sharesData.extend(userShares)
+
+        history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
+        priceData = []
+        for h in history:
+            date = START_DATE + timedelta(days=h.week * 7)
+            priceData.append({
+                "week": h.week,
+                "date": date.strftime("%d %b"),
+                "price": float(h.price)
+            })
+
+        result.append({
+            "company": companyInfo,
+            "shares_data": sharesData,
+            "price_data": priceData
+        })
+
+    return jsonify(result)
+
+if __name__ == "__main__":
+    if os.environ.get("FLASK_ENV") == "development":
+        with app.app_context():
+            db.create_all()
+    app.run()
