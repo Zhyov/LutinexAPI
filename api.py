@@ -277,6 +277,23 @@ def get_player_holdings(player_id):
 
     return jsonify(result)
 
+@app.route("/player/<player_username>")
+def get_player_by_username(player_username):
+    user = User.query.filter(User.username == player_username).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    result = {
+        "id": str(user.id),
+        "username": user.username,
+        "name": user.name,
+        "color": user.color,
+        "own_company": user.own_company,
+        "balance": float(user.balance)
+    }
+
+    return jsonify(result)
+
 @app.route("/company/<company_id>/history")
 def get_company_history(company_id):
     history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.week).all()
