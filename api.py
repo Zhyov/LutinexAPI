@@ -1,22 +1,28 @@
+import uuid, os, requests, random, jwt, datetime
 from sqlalchemy import func, or_
-from flask import Flask, jsonify, request, abort
+from flask import Flask, jsonify, request, current_app, g
 from flask_cors import CORS
 from dotenv import load_dotenv
-from functools import lru_cache
-from datetime import datetime, timedelta
+from functools import lru_cache, wraps
+from flask_jwt_extended import jwt_required, get_jwt_identity, JWTManager, create_access_token
 from models import db, Word, Company, Ownership, SharePrice, User
-import uuid, os, requests, random
 
 load_dotenv()
 app = Flask(__name__, instance_relative_config=True)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "development-key")
+app.config["JWT_SECRET_KEY"] = app.config["SECRET_KEY"] 
+app.config["JWT_TOKEN_LOCATION"] = ["headers"]
+app.config["JWT_HEADER_NAME"] = "Authorization"
+app.config["JWT_HEADER_TYPE"] = "Bearer"
 CORS(app)
+jwt = JWTManager(app)
 db.init_app(app)
 
 SUPABASE_PROJECT_ID = "sblovettyyzfrvbiroiz"
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
-START_DATE = datetime(2025, 9, 1)
+START_DATE = datetime.datetime(2025, 9, 1)
 
 filterPattern = {
     "0": [],
@@ -36,6 +42,26 @@ filterPattern = {
     "e": ["special", "replaceable", "combination"],
     "f": ["general", "special", "replaceable", "combination"]
 }
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("Authorization")
+        if not token:
+            return {"error": "Token missing"}, 401
+
+        try:
+            decoded = jwt.decode(
+                token.split(" ")[1], 
+                current_app.config["SECRET_KEY"], 
+                algorithms=["HS256"]
+            )
+            g.user = User.query.get(decoded["id"])
+        except:
+            return {"error": "Invalid or expired token"}, 401
+
+        return f(*args, **kwargs)
+    return decorated
 
 def get_latest_two_prices(company_id):
     prices = (
@@ -298,7 +324,7 @@ def get_stocks():
         history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
         priceData = []
         for h in history:
-            date = START_DATE + timedelta(days=h.week * 7)
+            date = START_DATE + datetime.timedelta(days=h.week * 7)
             priceData.append({
                 "week": h.week,
                 "date": date.strftime("%d %b"),
@@ -312,6 +338,81 @@ def get_stocks():
         })
 
     return jsonify(result)
+
+@app.route("/auth/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    if not data:
+        return {"error": "No JSON data provided"}, 400
+
+    if User.query.filter_by(username=data["username"]).first():
+        return {"error": "Username already taken"}, 400
+
+    user = User(
+        name=data["name"],
+        username=data["username"],
+        color=data.get("color", "#{:06x}".format(random.randint(0, 0xFFFFFF))),
+        own_company=None,
+        balance=0
+    )
+    user.set_password(data["password"])
+    db.session.add(user)
+    db.session.commit()
+
+    return {"message": "User registered successfully"}, 201
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.json
+    user = User.query.filter_by(username=data["username"]).first()
+
+    if not user or not user.check_password(data["password"]):
+        return {"error": "Invalid username or password"}, 401
+
+    token = create_access_token(identity=str(user.id), expires_delta=datetime.timedelta(hours=24))
+
+    return {
+        "token": token,
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "name": user.name,
+            "color": user.color,
+            "balance": float(user.balance),
+            "own_company": user.own_company
+        }
+    }
+
+@app.route("/auth/update", methods=["PATCH"])
+@jwt_required()
+def update_user():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return {"error": "User not found"}, 404
+
+    data = request.json
+
+    if "name" in data:
+        user.name = data["name"]
+    if "color" in data:
+        user.color = data["color"]
+    if "own_company" in data:
+        user.own_company = data["own_company"]
+
+    db.session.commit()
+
+    return {
+        "message": "User updated successfully",
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "name": user.name,
+            "color": user.color,
+            "own_company": user.own_company,
+            "balance": float(user.balance)
+        }
+    }
 
 if __name__ == "__main__":
     if os.environ.get("FLASK_ENV") == "development":

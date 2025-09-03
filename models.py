@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import ForeignKey
 from sqlalchemy.types import BigInteger, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
@@ -53,8 +54,15 @@ class User(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = db.Column(String, nullable=False)
     username = db.Column(String, nullable=False, unique=True)
+    password_hash = db.Column(String, nullable=False)
     own_company = db.Column(String, nullable=True)
     color = db.Column(String, nullable=False)
-    balance = db.Column(Numeric, nullable=False)
+    balance = db.Column(Numeric, nullable=False, default=0)
 
     ownerships = db.relationship("Ownership", back_populates="user")
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
