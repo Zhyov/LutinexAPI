@@ -78,6 +78,33 @@ def get_latest_two_prices(company_id):
         return (float(prices[0].price), 0.0)
     return (float(prices[0].price), float(prices[1].price))
 
+def get_user_shares_balance(user_id):
+    ownerships = Ownership.query.filter_by(user_id=user_id).all()
+    inShares = 0
+    for own in ownerships:
+        company = Company.query.get(own.company_id)
+        latest_price = get_latest_price(company.id)
+        inShares += own.shares_owned * latest_price
+    
+    return inShares
+
+def get_player_holdings(player_id):
+    ownerships = Ownership.query.filter_by(user_id=player_id).all()
+    result = []
+
+    for own in ownerships:
+        company = Company.query.get(own.company_id)
+        latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
+        latest_price = float(latest_price_obj.price) if latest_price_obj else 0
+
+        result.append({
+            "company": company.name,
+            "code": company.code,
+            "shares_owned": own.shares_owned,
+            "current_value": own.shares_owned * latest_price
+        })
+
+    return result
 
 @lru_cache(maxsize=128)
 def get_user_info(token):
@@ -258,27 +285,17 @@ def get_company(company_id):
     }
     return jsonify(result)
 
-@app.route("/player/<player_id>/holdings")
-def get_player_holdings(player_id):
-    ownerships = Ownership.query.filter_by(user_id=player_id).all()
-    result = []
-
-    for own in ownerships:
-        company = Company.query.get(own.company_id)
-        latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
-        latest_price = float(latest_price_obj.price) if latest_price_obj else 0
-
-        result.append({
-            "company": company.name,
-            "code": company.code,
-            "shares_owned": own.shares_owned,
-            "current_value": own.shares_owned * latest_price
-        })
-
+@app.route("/company/<company_id>/history")
+def get_company_history(company_id):
+    history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.week).all()
+    result = [
+        {"week": h.week, "price": float(h.price)}
+        for h in history
+    ]
     return jsonify(result)
 
-@app.route("/player/<player_username>")
-def get_player_by_username(player_username):
+@app.route("/user/<player_username>")
+def get_user_by_username(player_username):
     user = User.query.filter(User.username == player_username).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
@@ -289,18 +306,28 @@ def get_player_by_username(player_username):
         "name": user.name,
         "color": user.color,
         "own_company": user.own_company,
-        "balance": float(user.balance)
+        "balance": float(user.balance),
+        "in_shares": get_user_shares_balance(user.id),
+        "stocks": get_player_holdings(user.id)
     }
 
     return jsonify(result)
 
-@app.route("/company/<company_id>/history")
-def get_company_history(company_id):
-    history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.week).all()
-    result = [
-        {"week": h.week, "price": float(h.price)}
-        for h in history
-    ]
+@app.route("/users")
+def get_users():
+    users = User.query.all()
+    result = []
+    for user in users:
+        result.append({
+            "id": str(user.id),
+            "username": user.username,
+            "name": user.name,
+            "color": user.color,
+            "own_company": user.own_company,
+            "balance": float(user.balance),
+            "in_shares": get_user_shares_balance(user.id)
+        })
+
     return jsonify(result)
 
 @app.route("/stocks")
@@ -325,7 +352,7 @@ def get_stocks():
         }
 
         ownerships = Ownership.query.filter_by(company_id=company.id).all()
-        sharesData = [{"owner": "Government", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
+        sharesData = [{"owner": "Lötinäç'sörä Ägavam ", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
         IPOShares = 0
         userShares = []
         for own in ownerships:
