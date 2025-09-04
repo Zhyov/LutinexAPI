@@ -299,14 +299,16 @@ def get_company(company_id):
         })
 
     result = {
-        "id": str(company.id),
-        "name": company.name,
-        "code": company.code,
-        "latest_price": latest_price,
-        "total_shares": company.total_shares,
-        "float_shares": company.float_shares,
-        "insider_shares": company.insider_shares,
-        "gov_shares": company.gov_shares,
+        "company": {
+            "id": str(company.id),
+            "name": company.name,
+            "code": company.code,
+            "latest_price": latest_price,
+            "total_shares": company.total_shares,
+            "float_shares": company.float_shares,
+            "insider_shares": company.insider_shares,
+            "gov_shares": company.gov_shares
+        },
         "price_data": priceData,
         "shares_data": sharesData
     }
@@ -322,25 +324,6 @@ def get_company_history(company_id):
     ]
 
     return jsonify(result)
-
-@app.route("/company/<company_id>/owners")
-def get_company_owners(company_id):
-    company = Company.query.get(company_id)
-    ownerships = Ownership.query.filter_by(company_id=company.id).all()
-    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
-    IPOShares = 0
-    userShares = []
-    for own in ownerships:
-        userShares.append({
-            "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
-            "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
-            "shares": own.shares_owned
-        })
-        IPOShares += own.shares_owned
-    sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
-    sharesData.extend(userShares)
-
-    return jsonify(sharesData)
 
 @app.route("/user/<player_username>")
 def get_user_by_username(player_username):
