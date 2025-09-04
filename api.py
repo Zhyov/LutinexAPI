@@ -271,8 +271,20 @@ def get_company(company_id):
     if not company:
         return jsonify({"error": "Company not found"}), 404
 
-    latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
-    latest_price = float(latest_price_obj.price) if latest_price_obj else 0
+    latest_price, prev_price = get_latest_two_prices(company.id)
+    change = latest_price - prev_price
+    percent_change = (change / prev_price * 100) if prev_price > 0 else 0
+
+    companyInfo = {
+        "id": str(company.id),
+        "name": company.name,
+        "code": company.code,
+        "price": latest_price,
+        "previous_price": prev_price,
+        "change": change,
+        "percent_change": percent_change,
+        "total_shares": company.total_shares
+    }
 
     ownerships = Ownership.query.filter_by(company_id=company.id).all()
     sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
@@ -299,16 +311,7 @@ def get_company(company_id):
         })
 
     result = {
-        "company": {
-            "id": str(company.id),
-            "name": company.name,
-            "code": company.code,
-            "latest_price": latest_price,
-            "total_shares": company.total_shares,
-            "float_shares": company.float_shares,
-            "insider_shares": company.insider_shares,
-            "gov_shares": company.gov_shares
-        },
+        "company": companyInfo,
         "price_data": priceData,
         "shares_data": sharesData
     }
