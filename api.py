@@ -262,6 +262,7 @@ def get_companies():
             "percent_change": percent_change,
             "total_shares": company.total_shares
         })
+    
     return jsonify(result)
 
 @app.route("/company/<company_id>")
@@ -273,6 +274,30 @@ def get_company(company_id):
     latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
     latest_price = float(latest_price_obj.price) if latest_price_obj else 0
 
+    ownerships = Ownership.query.filter_by(company_id=company.id).all()
+    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
+    IPOShares = 0
+    userShares = []
+    for own in ownerships:
+        userShares.append({
+            "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
+            "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
+            "shares": own.shares_owned
+        })
+        IPOShares += own.shares_owned
+    sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
+    sharesData.extend(userShares)
+
+    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
+    priceData = []
+    for h in history:
+        date = START_DATE + datetime.timedelta(days=h.week * 7)
+        priceData.append({
+            "week": h.week,
+            "date": date.strftime("%d %b"),
+            "price": float(h.price)
+        })
+
     result = {
         "id": str(company.id),
         "name": company.name,
@@ -281,8 +306,11 @@ def get_company(company_id):
         "total_shares": company.total_shares,
         "float_shares": company.float_shares,
         "insider_shares": company.insider_shares,
-        "gov_shares": company.gov_shares
+        "gov_shares": company.gov_shares,
+        "price_data": priceData,
+        "shares_data": sharesData
     }
+
     return jsonify(result)
 
 @app.route("/company/<company_id>/history")
@@ -292,7 +320,27 @@ def get_company_history(company_id):
         {"week": h.week, "price": float(h.price)}
         for h in history
     ]
+
     return jsonify(result)
+
+@app.route("/company/<company_id>/owners")
+def get_company_owners(company_id):
+    company = Company.query.get(company_id)
+    ownerships = Ownership.query.filter_by(company_id=company.id).all()
+    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
+    IPOShares = 0
+    userShares = []
+    for own in ownerships:
+        userShares.append({
+            "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
+            "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
+            "shares": own.shares_owned
+        })
+        IPOShares += own.shares_owned
+    sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
+    sharesData.extend(userShares)
+
+    return jsonify(sharesData)
 
 @app.route("/user/<player_username>")
 def get_user_by_username(player_username):
@@ -352,7 +400,7 @@ def get_stocks():
         }
 
         ownerships = Ownership.query.filter_by(company_id=company.id).all()
-        sharesData = [{"owner": "Lötinäç'sörä Ägavam ", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
+        sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
         IPOShares = 0
         userShares = []
         for own in ownerships:
