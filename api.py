@@ -411,6 +411,9 @@ def register():
 
     if User.query.filter_by(username=data["username"]).first():
         return {"error": "Username already taken"}, 400
+    
+    if not data["name"]:
+        data["name"] = data["username"]
 
     user = User(
         name=data["name"],
@@ -419,6 +422,7 @@ def register():
         own_company=None,
         balance=0
     )
+    
     user.set_password(data["password"])
     db.session.add(user)
     db.session.commit()
@@ -430,8 +434,11 @@ def login():
     data = request.json
     user = User.query.filter_by(username=data["username"]).first()
 
-    if not user or not user.check_password(data["password"]):
-        return {"error": "Invalid username or password"}, 401
+    if not user:
+        return {"error": "Invalid username"}, 401
+    
+    if not user.check_password(data["password"]):
+        return {"error": "Invalid password"}, 401
 
     token = create_access_token(identity=str(user.id), expires_delta=datetime.timedelta(hours=24))
 

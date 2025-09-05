@@ -52,7 +52,7 @@ class SharePrice(db.Model):
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = db.Column(String, nullable=False)
+    name = db.Column(String, nullable=True)
     username = db.Column(String, nullable=False, unique=True)
     password_hash = db.Column(String, nullable=False)
     own_company = db.Column(String, nullable=True)
