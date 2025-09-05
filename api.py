@@ -108,19 +108,20 @@ def get_player_holdings(player_id):
 
 def get_company_stocks(company):
     ownerships = Ownership.query.filter_by(company_id=company.id).all()
-    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "owner_name": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares, "is_user": False}, {"owner": "Insiders", "owner_name": "Insiders", "color": "#FFC800", "shares": company.insider_shares, "is_user": False}]
+    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares, "is_user": False}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares, "is_user": False}]
     IPOShares = 0
     userShares = []
     for own in ownerships:
         userShares.append({
             "owner": own.user.own_company if own.user.own_company else own.user.name,
-            "owner_name": own.user.name,
+            "owner_name": own.user.name if own.user.name else None,
+            "owner_username": own.user.username if own.user.own_company else None,
             "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
             "shares": own.shares_owned,
             "is_user": True
         })
         IPOShares += own.shares_owned
-    sharesData.append({"owner": "IPO", "owner_name": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares, "is_user": False})
+    sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares, "is_user": False})
     sharesData.extend(userShares)
 
     history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
