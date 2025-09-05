@@ -106,6 +106,35 @@ def get_player_holdings(player_id):
 
     return result
 
+def get_company_stocks(company):
+    ownerships = Ownership.query.filter_by(company_id=company.id).all()
+    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "owner_name": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares, "is_user": False}, {"owner": "Insiders", "owner_name": "Insiders", "color": "#FFC800", "shares": company.insider_shares, "is_user": False}]
+    IPOShares = 0
+    userShares = []
+    for own in ownerships:
+        userShares.append({
+            "owner": own.user.own_company if own.user.own_company else own.user.name,
+            "owner_name": own.user.name,
+            "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
+            "shares": own.shares_owned,
+            "is_user": True
+        })
+        IPOShares += own.shares_owned
+    sharesData.append({"owner": "IPO", "owner_name": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares, "is_user": False})
+    sharesData.extend(userShares)
+
+    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
+    priceData = []
+    for h in history:
+        date = START_DATE + datetime.timedelta(days=h.week * 7)
+        priceData.append({
+            "week": h.week,
+            "date": date.strftime("%d %b"),
+            "price": float(h.price)
+        })
+
+    return sharesData, priceData
+
 @lru_cache(maxsize=128)
 def get_user_info(token):
     headers = {
@@ -286,29 +315,7 @@ def get_company(company_id):
         "total_shares": company.total_shares
     }
 
-    ownerships = Ownership.query.filter_by(company_id=company.id).all()
-    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
-    IPOShares = 0
-    userShares = []
-    for own in ownerships:
-        userShares.append({
-            "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
-            "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
-            "shares": own.shares_owned
-        })
-        IPOShares += own.shares_owned
-    sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
-    sharesData.extend(userShares)
-
-    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
-    priceData = []
-    for h in history:
-        date = START_DATE + datetime.timedelta(days=h.week * 7)
-        priceData.append({
-            "week": h.week,
-            "date": date.strftime("%d %b"),
-            "price": float(h.price)
-        })
+    sharesData, priceData = get_company_stocks(company)
 
     result = {
         "company": companyInfo,
@@ -385,29 +392,7 @@ def get_stocks():
             "total_shares": company.total_shares
         }
 
-        ownerships = Ownership.query.filter_by(company_id=company.id).all()
-        sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares}]
-        IPOShares = 0
-        userShares = []
-        for own in ownerships:
-            userShares.append({
-                "owner": own.user.own_company if own.user.own_company else own.user.name if own.user.name else f"Player {own.user_id}",
-                "color": own.user.color if own.user.color else "#{:06x}".format(random.randint(0, 0xFFFFFF)),
-                "shares": own.shares_owned
-            })
-            IPOShares += own.shares_owned
-        sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares})
-        sharesData.extend(userShares)
-
-        history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
-        priceData = []
-        for h in history:
-            date = START_DATE + datetime.timedelta(days=h.week * 7)
-            priceData.append({
-                "week": h.week,
-                "date": date.strftime("%d %b"),
-                "price": float(h.price)
-            })
+        sharesData, priceData = get_company_stocks(company)
 
         result.append({
             "company": companyInfo,
