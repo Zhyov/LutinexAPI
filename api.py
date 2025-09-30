@@ -63,11 +63,42 @@ def token_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def update_share_prices():
+    with current_app.app_context():
+        companies = Company.query.all()
+
+        for company in companies:
+            latest = (
+                SharePrice.query
+                .filter_by(company_id=company.id)
+                .order_by(SharePrice.day.desc())
+                .first()
+            )
+
+            if not latest:
+                continue
+
+            new_day = latest.day + 1
+            last_price = float(latest.price)
+
+            change_factor = 1 + (random.randint(-285, 285) / (100.0 * 1000))
+            new_price = round(last_price * change_factor, 2)
+            new_entry = SharePrice(
+                company_id=company.id,
+                day=new_day,
+                price=new_price
+            )
+
+            db.session.add(new_entry)
+
+        db.session.commit()
+        print("Share prices updated.")
+
 def get_latest_two_prices(company_id):
     prices = (
         SharePrice.query
             .filter_by(company_id=company_id)
-            .order_by(SharePrice.week.desc())
+            .order_by(SharePrice.day.desc())
             .limit(2)
             .all()
     )
@@ -94,7 +125,7 @@ def get_player_holdings(player_id):
 
     for own in ownerships:
         company = Company.query.get(own.company_id)
-        latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week.desc()).first()
+        latest_price_obj = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day.desc()).first()
         latest_price = float(latest_price_obj.price) if latest_price_obj else 0
 
         result.append({
@@ -124,12 +155,15 @@ def get_company_stocks(company):
     sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares, "is_user": False})
     sharesData.extend(userShares)
 
-    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.week).all()
+    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day).all()
     priceData = []
     for h in history:
-        date = START_DATE + datetime.timedelta(days=h.week * 7)
+        if len(priceData) >= 7:
+            break
+        
+        date = START_DATE + datetime.timedelta(days=h.day)
         priceData.append({
-            "week": h.week,
+            "day": h.day,
             "date": date.strftime("%d %b"),
             "price": float(h.price)
         })
@@ -268,7 +302,7 @@ def script_order():
 def get_latest_price(company_id):
     latest = (
         SharePrice.query.filter_by(company_id=company_id)
-        .order_by(SharePrice.week.desc())
+        .order_by(SharePrice.day.desc())
         .first()
     )
     return float(latest.price) if latest else 0.0
@@ -328,9 +362,9 @@ def get_company(company_id):
 
 @app.route("/company/<company_id>/history")
 def get_company_history(company_id):
-    history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.week).all()
+    history = SharePrice.query.filter_by(company_id=company_id).order_by(SharePrice.day).all()
     result = [
-        {"week": h.week, "price": float(h.price)}
+        {"day": h.day, "price": float(h.price)}
         for h in history
     ]
 
@@ -453,6 +487,15 @@ def login():
             "own_company": user.own_company
         }
     }
+
+@app.route("/stock-update", methods=["POST"])
+def trigger_update_prices():
+    auth = request.headers.get("X-CRON-KEY")
+    if auth != os.environ.get("CRON_SECRET"):
+        return {"error": "Unauthorized"}, 403
+    
+    update_share_prices()
+    return {"message": "Share prices updated successfully"}
 
 @app.route("/auth/update", methods=["PATCH"])
 @jwt_required()

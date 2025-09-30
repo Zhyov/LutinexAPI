@@ -44,7 +44,7 @@ class SharePrice(db.Model):
     __tablename__ = "share_prices"
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = db.Column(UUID, ForeignKey("companies.id"), nullable=False)
-    week = db.Column(BigInteger, nullable=False)
+    day = db.Column(BigInteger, nullable=False)
     price = db.Column(Numeric, nullable=False)
 
     company = db.relationship("Company", back_populates="share_prices")
