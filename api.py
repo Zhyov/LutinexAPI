@@ -155,7 +155,7 @@ def get_company_stocks(company):
     sharesData.append({"owner": "IPO", "color": "#FFF", "shares": company.float_shares - IPOShares, "is_user": False})
     sharesData.extend(userShares)
 
-    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day).all()
+    history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day.desc()).all()
     priceData = []
     for h in history:
         if len(priceData) >= 7:
