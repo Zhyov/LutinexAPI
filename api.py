@@ -156,6 +156,7 @@ def get_company_stocks(company):
     sharesData.extend(userShares)
 
     history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day.desc()).all()
+    history = list(reversed(history))
     priceData = []
     for h in history:
         if len(priceData) >= 7:
