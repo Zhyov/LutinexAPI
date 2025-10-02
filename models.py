@@ -25,6 +25,7 @@ class Company(db.Model):
     float_shares = db.Column(BigInteger, nullable=False)
     insider_shares = db.Column(BigInteger, nullable=False)
     gov_shares = db.Column(BigInteger, nullable=False)
+    dividends = db.Column(Numeric, nullable=False, default=0)
 
     share_prices = db.relationship("SharePrice", back_populates="company", cascade="all, delete-orphan")
     ownerships = db.relationship("Ownership", back_populates="company", cascade="all, delete-orphan")

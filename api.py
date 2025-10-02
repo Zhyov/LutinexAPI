@@ -63,6 +63,27 @@ def token_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def get_current_day():
+    latest_day = db.session.query(func.max(SharePrice.day)).scalar()
+    return latest_day or 0
+
+def pay_dividends():
+    with current_app.app_context():
+        companies = Company.query.all()
+
+        for company in companies:
+            ownerships = Ownership.query.filter_by(company_id=company.id).all()
+            latest_price = get_latest_price(company.id)
+            dividend_per_share = latest_price * company.dividends / 100.0
+
+            for own in ownerships:
+                user = User.query.get(own.user_id)
+                dividend_amount = own.shares_owned * dividend_per_share
+                user.balance += dividend_amount
+
+        db.session.commit()
+        print("Dividends paid.")
+
 def update_share_prices():
     with current_app.app_context():
         companies = Company.query.all()
@@ -93,6 +114,7 @@ def update_share_prices():
 
         db.session.commit()
         print("Share prices updated.")
+        pay_dividends()
 
 def get_latest_two_prices(company_id):
     prices = (
@@ -139,7 +161,7 @@ def get_player_holdings(player_id):
 
 def get_company_stocks(company):
     ownerships = Ownership.query.filter_by(company_id=company.id).all()
-    sharesData = [{"owner": "Lötinäç'sörä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares, "is_user": False}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares, "is_user": False}]
+    sharesData = [{"owner": "Lötinäç'rä Ägavam", "color": "#7E0CE2", "shares": company.gov_shares, "is_user": False}, {"owner": "Insiders", "color": "#FFC800", "shares": company.insider_shares, "is_user": False}]
     IPOShares = 0
     userShares = []
     for own in ownerships:
@@ -325,7 +347,8 @@ def get_companies():
             "previous_price": prev_price,
             "change": change,
             "percent_change": percent_change,
-            "total_shares": company.total_shares
+            "total_shares": company.total_shares,
+            "dividends": company.dividends
         })
     
     return jsonify(result)
@@ -338,7 +361,7 @@ def get_company(company_id):
 
     latest_price, prev_price = get_latest_two_prices(company.id)
     change = latest_price - prev_price
-    percent_change = (change / prev_price * 100) if prev_price > 0 else 0
+    percent_change = round((change / prev_price * 100), 2) if prev_price > 0 else 0
 
     companyInfo = {
         "id": str(company.id),
@@ -348,7 +371,8 @@ def get_company(company_id):
         "previous_price": prev_price,
         "change": change,
         "percent_change": percent_change,
-        "total_shares": company.total_shares
+        "total_shares": company.total_shares,
+        "dividends": company.dividends
     }
 
     sharesData, priceData = get_company_stocks(company)
@@ -497,6 +521,83 @@ def trigger_update_prices():
     
     update_share_prices()
     return {"message": "Share prices updated successfully"}
+
+@app.route("/stocks/buy", methods=["POST"])
+@jwt_required()
+def buy_shares():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return {"error": "User not found"}, 404
+
+    data = request.json
+    company_id = data.get("company_id")
+    shares_to_buy = int(data.get("shares", 0))
+
+    if shares_to_buy <= 0:
+        return {"error": "Invalid number of shares"}, 400
+
+    company = Company.query.get(company_id)
+    if not company:
+        return {"error": "Company not found"}, 404
+
+    latest_price = get_latest_price(company.id)
+    total_cost = latest_price * shares_to_buy
+
+    if user.balance < total_cost:
+        return {"error": "Insufficient balance"}, 400
+
+    user.balance -= total_cost
+
+    ownership = Ownership.query.filter_by(user_id=user.id, company_id=company.id).first()
+    if ownership:
+        ownership.shares_owned += shares_to_buy
+    else:
+        ownership = Ownership(
+            company_id=company.id,
+            user_id=user.id,
+            day=get_current_day(),
+            shares_owned=shares_to_buy
+        )
+        db.session.add(ownership)
+
+    db.session.commit()
+    return {"message": f"Bought {shares_to_buy} shares of {company.name}", "balance": float(user.balance)}
+
+@app.route("/stocks/sell", methods=["POST"])
+@jwt_required()
+def sell_shares():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return {"error": "User not found"}, 404
+
+    data = request.json
+    company_id = data.get("company_id")
+    shares_to_sell = int(data.get("shares", 0))
+
+    if shares_to_sell <= 0:
+        return {"error": "Invalid number of shares"}, 400
+
+    company = Company.query.get(company_id)
+    if not company:
+        return {"error": "Company not found"}, 404
+
+    ownership = Ownership.query.filter_by(user_id=user.id, company_id=company.id).first()
+    if not ownership or ownership.shares_owned < shares_to_sell:
+        return {"error": "Not enough shares to sell"}, 400
+
+    latest_price = get_latest_price(company.id)
+    total_value = latest_price * shares_to_sell
+
+    user.balance += total_value
+    ownership.shares_owned -= shares_to_sell
+
+    if ownership.shares_owned == 0:
+        db.session.delete(ownership)
+
+    db.session.commit()
+    return {"message": f"Sold {shares_to_sell} shares of {company.name}", "balance": float(user.balance)}
 
 @app.route("/auth/update", methods=["PATCH"])
 @jwt_required()
