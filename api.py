@@ -5,6 +5,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from functools import lru_cache, wraps
 from flask_jwt_extended import jwt_required, get_jwt_identity, JWTManager, create_access_token
+from decimal import Decimal
 from models import db, Word, Company, Ownership, SharePrice, User
 
 load_dotenv()
@@ -73,7 +74,7 @@ def pay_dividends():
 
         for company in companies:
             ownerships = Ownership.query.filter_by(company_id=company.id).all()
-            latest_price = get_latest_price(company.id)
+            latest_price = Decimal(get_latest_price(company.id))
             dividend_per_share = latest_price * company.dividends / 100.0
 
             for own in ownerships:
@@ -547,7 +548,7 @@ def buy_shares():
     if user.balance < total_cost:
         return {"error": "Insufficient balance"}, 400
 
-    user.balance -= total_cost
+    user.balance -= Decimal(total_cost)
 
     ownership = Ownership.query.filter_by(user_id=user.id, company_id=company.id).first()
     if ownership:
