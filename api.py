@@ -589,10 +589,10 @@ def sell_shares():
         return {"error": "Not enough shares to sell"}, 400
 
     latest_price = get_latest_price(company.id)
-    total_value = latest_price * Decimal(shares_to_sell)
+    total_value = latest_price * shares_to_sell
 
-    user.balance += total_value
-    ownership.shares_owned -= shares_to_sell
+    user.balance += Decimal(total_value)
+    ownership.shares_owned -= Decimal(shares_to_sell)
 
     if ownership.shares_owned == 0:
         db.session.delete(ownership)
