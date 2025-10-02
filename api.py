@@ -156,7 +156,6 @@ def get_company_stocks(company):
     sharesData.extend(userShares)
 
     history = SharePrice.query.filter_by(company_id=company.id).order_by(SharePrice.day.desc()).all()
-    history = list(reversed(history))
     priceData = []
     for h in history:
         if len(priceData) >= 7:
@@ -168,7 +167,8 @@ def get_company_stocks(company):
             "date": date.strftime("%d %b"),
             "price": float(h.price)
         })
-
+    
+    priceData = list(reversed(priceData))
     return sharesData, priceData
 
 @lru_cache(maxsize=128)
