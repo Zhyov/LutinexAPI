@@ -1,4 +1,4 @@
-# import uuid, os, requests, random, jwt, datetime
+import uuid, os, requests, random, jwt, datetime
 from sqlalchemy import func, or_
 from flask import Flask, jsonify, request, current_app, g
 from flask_cors import CORS
