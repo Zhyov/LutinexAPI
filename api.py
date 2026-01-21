@@ -1,4 +1,4 @@
-import uuid, os, requests, random, jwt, datetime
+# import uuid, os, requests, random, jwt, datetime
 from sqlalchemy import func, or_
 from flask import Flask, jsonify, request, current_app, g
 from flask_cors import CORS
@@ -400,7 +400,7 @@ def script_order():
 
     return jsonify(order)
 
-@app.rout("/order/levotin")
+@app.route("/order/levotin")
 def levotin_script_order():
     order = ["α", "β", "γ", "δ", "ε", "η", "ι", "κ", "λ", "μ", "ν", "ο", "π", "ρ", "σ", "ς", "τ", "υ", "φ", "χ", "ω"]
 
