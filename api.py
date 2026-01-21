@@ -44,25 +44,6 @@ filterPattern = {
     "f": ["general", "special", "replaceable", "combination"]
 }
 
-morphemeFilterPattern = {
-    "0": [],
-    "1": ["noun"],
-    "2": ["verb"],
-    "3": ["noun", "verb"],
-    "4": ["adjective"],
-    "5": ["noun", "adjective"],
-    "6": ["verb", "adjective"],
-    "7": ["noun", "verb", "adjective"],
-    "8": ["particle"],
-    "9": ["noun", "particle"],
-    "a": ["verb", "particle"],
-    "b": ["noun", "verb", "particle"],
-    "c": ["adjective", "particle"],
-    "d": ["noun", "adjective", "particle"],
-    "e": ["verb", "adjective", "particle"],
-    "f": ["noun", "verb", "adjective", "particle"]
-}
-
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -281,7 +262,6 @@ def fetch_words():
 @app.route("/fetch/morphemes")
 def fetch_morphemes():
     query = request.args.get("q", "").lower()
-    filterKey = request.args.get("f", "")
 
     morphemesQuery = Morpheme.query
     if query:
@@ -291,10 +271,6 @@ def fetch_morphemes():
                 func.cast(Morpheme.meaning, db.Text).ilike(f"%{query}%")
             )
         )
-
-    if filterKey in morphemeFilterPattern:
-        allowedTypes = [t.lower() for t in morphemeFilterPattern[filterKey]]
-        morphemesQuery = morphemesQuery.filter(func.lower(Morpheme.type).in_(allowedTypes))
 
     morphemes = morphemesQuery.all()
 
