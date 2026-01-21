@@ -16,6 +16,15 @@ class Word(db.Model):
     phonetic = db.Column(String, nullable=False)
     combination = db.Column(JSONB, nullable=True)
 
+class Morpheme(db.Model):
+    __tablename__ = "morphemes"
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    morpheme = db.Column(String, nullable=False)
+    meaning = db.Column(JSONB, nullable=False)
+    type = db.Column(String, nullable=False)
+    phonetic = db.Column(String, nullable=False)
+    changes = db.Column(JSONB, nullable=True)
+
 class Company(db.Model):
     __tablename__ = "companies"
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

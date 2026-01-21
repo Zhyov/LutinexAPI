@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from functools import lru_cache, wraps
 from flask_jwt_extended import jwt_required, get_jwt_identity, JWTManager, create_access_token
 from decimal import Decimal
-from models import db, Word, Company, Ownership, SharePrice, User
+from models import db, Word, Morpheme, Company, Ownership, SharePrice, User
 
 load_dotenv()
 app = Flask(__name__, instance_relative_config=True)
@@ -42,6 +42,25 @@ filterPattern = {
     "d": ["general", "replaceable", "combination"],
     "e": ["special", "replaceable", "combination"],
     "f": ["general", "special", "replaceable", "combination"]
+}
+
+morphemeFilterPattern = {
+    "0": [],
+    "1": ["noun"],
+    "2": ["verb"],
+    "3": ["noun", "verb"],
+    "4": ["adjective"],
+    "5": ["noun", "adjective"],
+    "6": ["verb", "adjective"],
+    "7": ["noun", "verb", "adjective"],
+    "8": ["particle"],
+    "9": ["noun", "particle"],
+    "a": ["verb", "particle"],
+    "b": ["noun", "verb", "particle"],
+    "c": ["adjective", "particle"],
+    "d": ["noun", "adjective", "particle"],
+    "e": ["verb", "adjective", "particle"],
+    "f": ["noun", "verb", "adjective", "particle"]
 }
 
 def token_required(f):
@@ -223,6 +242,11 @@ def get_names():
     names = [name for (name,) in db.session.query(Word.word).all()]
     return jsonify(names)
 
+@app.route("/names/morphemes")
+def get_morpheme_names():
+    names = [name for (name,) in db.session.query(Morpheme.morpheme).all()]
+    return jsonify(names)
+
 @app.route("/fetch")
 def fetch_words():
     query = request.args.get("q", "").lower()
@@ -254,6 +278,36 @@ def fetch_words():
 
     return jsonify(result)
 
+@app.route("/fetch/morphemes")
+def fetch_morphemes():
+    query = request.args.get("q", "").lower()
+    filterKey = request.args.get("f", "")
+
+    morphemesQuery = Morpheme.query
+    if query:
+        morphemesQuery = morphemesQuery.filter(
+            or_(
+                func.lower(Morpheme.morpheme).like(f"%{query}%"),
+                func.cast(Morpheme.meaning, db.Text).ilike(f"%{query}%")
+            )
+        )
+
+    if filterKey in morphemeFilterPattern:
+        allowedTypes = [t.lower() for t in morphemeFilterPattern[filterKey]]
+        morphemesQuery = morphemesQuery.filter(func.lower(Morpheme.type).in_(allowedTypes))
+
+    morphemes = morphemesQuery.all()
+
+    result = [{
+            "id": str(morpheme.id),
+            "morpheme": morpheme.morpheme,
+            "meaning": morpheme.meaning,
+            "type": morpheme.type,
+            "phonetic": morpheme.phonetic,
+            "changes": morpheme.changes
+    } for morpheme in morphemes]
+    return jsonify(result)
+
 @app.route("/word")
 def get_word():
     query = request.args.get("q", "").lower()
@@ -272,9 +326,32 @@ def get_word():
     
     return jsonify(result)
 
+@app.route("/word/morpheme")
+def get_morpheme():
+    query = request.args.get("q", "").lower()
+    if not query:
+        return jsonify([])
+
+    morphemes = Morpheme.query.filter(func.lower(Morpheme.morpheme) == query).all()
+    result = [{
+        "id": str(morpheme.id),
+        "morpheme": morpheme.morpheme,
+        "meaning": morpheme.meaning,
+        "type": morpheme.type,
+        "phonetic": morpheme.phonetic,
+        "changes": morpheme.changes
+    } for morpheme in morphemes]
+
+    return jsonify(result)
+
 @app.route("/max")
 def get_all_words_count():
     maxCount = db.session.query(func.count(Word.id)).scalar()
+    return jsonify({"max": maxCount})
+
+@app.route("/max/morpheme")
+def get_all_morphemes_count():
+    maxCount = db.session.query(func.count(Morpheme.id)).scalar()
     return jsonify({"max": maxCount})
 
 @app.route("/convert")
@@ -320,6 +397,12 @@ def convert_to_script():
 @app.route("/order")
 def script_order():
     order = ["a", "ä", "ą", "p", "b", "f", "v", "w", "k", "g", "t", "d", "đ", "z", "ž", "i", "į", "h", "j", "l", "m", "n", "ň", "o", "ö", "r", "s", "š", "c", "č", "ç"]
+
+    return jsonify(order)
+
+@app.rout("/order/levotin")
+def levotin_script_order():
+    order = ["α", "β", "γ", "δ", "ε", "η", "ι", "κ", "λ", "μ", "ν", "ο", "π", "ρ", "σ", "ς", "τ", "υ", "φ", "χ", "ω"]
 
     return jsonify(order)
 
